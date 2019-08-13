@@ -14,7 +14,7 @@ import (
 
 //Init function for initialize config
 func init() {
-	envname := "ATRSIP"
+	envname := "ATR-BPN"
 	path := os.Getenv(envname)
 	fmt.Println(path)
 	if _, err := os.Stat(path); os.IsNotExist(err) {

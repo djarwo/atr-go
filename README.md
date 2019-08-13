@@ -1,4 +1,4 @@
-# README ATOMIC SIP#
+# README ATR-BPNP#
 
 This README would normally document whatever steps are necessary to get your application up and running.
 
@@ -11,11 +11,11 @@ This README would normally document whatever steps are necessary to get your app
 ### How do I get set up? ###
 
 CREATE ENVIRONMENT
-  Environment Name: ATOMICSIP
+  Environment Name: ATR-BPN
   Windows: 
-    ATOMICSIP = path\to\your\environment\location
+    ATR-BPN = path\to\your\environment\location
   LINUX
-    export ATOMICSIP=path\to\your\environment\location
+    export ATR-BPN=path\to\your\environment\location
 
 Configuration
 
