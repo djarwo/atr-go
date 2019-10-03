@@ -1,21 +1,26 @@
 package helpers
 
 import (
+	"bytes"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/atomic/atr/configs"
 	"github.com/atomic/atr/models"
-
 	"github.com/dgrijalva/jwt-go"
+	"github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
 	"github.com/leekchan/accounting"
@@ -29,11 +34,43 @@ type Result struct {
 	Data       interface{}
 }
 
+type BasicTokenEnv struct {
+	Type      string
+	Key       string
+	SecretKey string
+}
+
+type SlackRequestBody struct {
+	Text    string `json:"text"`
+	Status  uint16 `json:"Status"`
+	Type    string `json:"Type"`
+	Package string `json:"Package"`
+	Service string `json:"Service"`
+}
+
+type Status struct {
+	Name string
+	ID   uint
+}
+
+type StatusClient struct {
+	Err        error
+	Status     int
+	Permission interface{} //models.Permission
+	Jwt        string
+	IP         [][]string
+}
+
+type LastID struct {
+	ID uint64
+}
+
 type buffer struct {
 	r         []byte
 	runeBytes [utf8.UTFMax]byte
 }
 
+// result all
 type ResultAll struct {
 	Status     string
 	Message    string
@@ -44,6 +81,7 @@ type ResultAll struct {
 	Data       interface{}
 }
 
+// return in trip
 type ReturnInTrip struct {
 	Data       interface{}
 	Message    string
@@ -51,6 +89,7 @@ type ReturnInTrip struct {
 	Error      error
 }
 
+// month
 type MonthInv struct {
 	StartDay time.Time
 	EndDay   time.Time
@@ -58,6 +97,7 @@ type MonthInv struct {
 	Week     int
 }
 
+// day in week
 type DayWeekInv struct {
 	DayInt    int
 	DayString time.Weekday
@@ -65,6 +105,13 @@ type DayWeekInv struct {
 	WeekMod   int
 	Year      int
 	Date      time.Time
+}
+
+// table migrate
+type TableMigrate struct {
+	ModelName string
+	TableName string
+	Table     interface{}
 }
 
 const (
@@ -104,24 +151,6 @@ func GetWeek() interface{} {
 	}
 
 	return arr
-}
-
-func GetNumberOfDay(day int, week int, claims jwt.MapClaims) (time.Time, error, int, string) {
-	var err error
-	var date time.Time
-	status := http.StatusOK
-	message := "Data Berhasil"
-	// start, _ := time.Parse("2006-01-02", "2018-01-01")
-	// end, _ := time.Parse("2006-01-02", "2018-01-31")
-	// datas, _, _, _ := GetNumberOfDays(start, end, claims)
-
-	// for _, vData := range datas {
-	// 	if vData.DayInt == day && vData.WeekMod == week {
-	// 		date = vData.Date
-	// 		return date, err, status, message
-	// 	}
-	// }
-	return date, err, status, message
 }
 
 func MessageErr(err error) string {
@@ -176,7 +205,7 @@ func ParseInt64(str string) int64 {
 	i, err := strconv.ParseInt(str, 10, 64)
 
 	if err != nil {
-		panic(err)
+		logrus.Error(err)
 	}
 	return i
 }
@@ -390,53 +419,118 @@ func FilterFindAll(c *gin.Context) (string, string) {
 	return page, size
 }
 
-func FilterFindAllParam(c *gin.Context) FindAllParams {
+func FindAllParamJoins(table string, params FindAllParams) FindAllParams {
+	var status bool
+	if params.StatusID != "" {
+		status = true
+		params.StatusID = table + "." + params.StatusID
+	}
+
+	if params.BusinessID != "" {
+		businessKey := 5
+		if !status {
+			businessKey = 0
+		}
+		businessID := params.BusinessID[businessKey:]
+		EqBusinessID := params.BusinessID[:businessKey]
+		businessID = table + "." + businessID
+		params.BusinessID = EqBusinessID + businessID
+	}
+
+	if params.GroupBy != "" {
+		params.GroupBy = table + "." + params.GroupBy
+	}
+
+	var sort string
+	desc := strings.Contains(strings.ToLower(params.SortBy), "desc")
+	asc := strings.Contains(strings.ToLower(params.SortBy), "asc")
+
+	if desc {
+		sort = "desc"
+	}
+
+	if asc {
+		sort = "asc"
+	}
+
+	if params.SortBy != "" {
+		leng := len(params.SortBy)
+		sortASC := strings.HasSuffix(strings.ToLower(params.SortBy), "asc")
+		sortDESC := strings.HasSuffix(strings.ToLower(params.SortBy), "desc")
+		if sortASC {
+			leng -= 4
+		} else if sortDESC {
+			leng -= 5
+		}
+
+		ExplodeSortBy := strings.Split(params.SortBy[:leng], ",")
+		var newSortBy string
+		var no int
+		lengExplode := len(ExplodeSortBy)
+		for _, v := range ExplodeSortBy {
+
+			if lengExplode-1 != no {
+				newSortBy = newSortBy + table + "." + v + " " + sort + ","
+			} else {
+				newSortBy = newSortBy + table + "." + v + " " + sort
+			}
+			no++
+		}
+
+		params.SortBy = newSortBy
+	}
+
+	return params
+}
+
+// find all multifunction
+func FilterFindAllParamExternal(c *gin.Context) FindAllParams {
 	var findallparams FindAllParams
 	var keywordName string
-	var businessId string
-	var statusId string
-	var outletId string
+	var businessID string
+	var statusID string
+	var outletID string
 	var sort string
 	var QC string
 	var Q string
 	var op string
 
 	findallparams = FindAllParams{"-1", "10", "", "code", "", "", "id desc", "", "", "", "", "", ""}
-	businessId = "1"
-	outletId = c.Query("OutletID")
+	businessID = *configs.BusinessID
+	outletID = c.Query("OutletID")
 	keywordName = c.Query("keywordName")
 	sortName := Underscore(c.Query("SortName"))
 	sortBy := strings.ToLower(c.Query("SortBy"))
 
 	if c.Query("Status ID") == "" {
-		statusId = c.Query("StatusID")
+		statusID = c.Query("StatusID")
 	} else {
-		statusId = c.Query("Status ID")
+		statusID = c.Query("Status ID")
 	}
 
-	if statusId != "-1" && statusId != "" {
-		statusId = "status_id = " + statusId
+	if statusID != "-1" && statusID != "" {
+		statusID = "status_id = " + statusID
 	} else {
-		statusId = ""
+		statusID = ""
 	}
 
-	if businessId != "-1" && businessId != "" {
-		if statusId != "" {
+	if businessID != "-1" && businessID != "" {
+		if statusID != "" {
 			op = " AND "
 		}
-		businessId = op + "business_id = " + businessId
+		businessID = op + "business_id = " + businessID
 		op = ""
 	} else {
-		businessId = ""
+		businessID = ""
 	}
 
-	if outletId != "-1" && outletId != "" {
-		if businessId != "" {
+	if outletID != "-1" && outletID != "" {
+		if businessID != "" {
 			op = " AND "
 		}
-		outletId = op + " outlet_id = " + outletId
+		outletID = op + " outlet_id = " + outletID
 	} else {
-		outletId = ""
+		outletID = ""
 	}
 
 	if c.Query("Query") == "" {
@@ -444,7 +538,7 @@ func FilterFindAllParam(c *gin.Context) FindAllParams {
 	} else {
 		Q = c.Query("Query")
 	}
-	query := Underscore(QueryReplaceFindAll(Q))
+	query := QueryReplaceFindAll(Q)
 
 	if sortName != "" {
 		sort = sortName + " " + sortBy
@@ -455,11 +549,83 @@ func FilterFindAllParam(c *gin.Context) FindAllParams {
 	size := c.Query("Size")
 	keyword := c.Query("Keyword")
 	grpupBy := Underscore(c.Query("GroupBy"))
-	QC = query + statusId + businessId + outletId + keywordName
-	findallparams = FindAllParams{Page: page, Size: size, Keyword: keyword, StatusID: statusId, Query: query, DataFinder: dataFinder, QueryCondition: QC, SortName: sortName, SortBy: sort, GroupBy: grpupBy, BusinessID: businessId, OutletID: outletId}
+	QC = query + statusID + businessID + outletID + keywordName
+	findallparams = FindAllParams{Page: page, Size: size, Keyword: keyword, StatusID: statusID, Query: query, DataFinder: dataFinder, QueryCondition: QC, SortName: sortName, SortBy: sort, GroupBy: grpupBy, BusinessID: businessID, OutletID: outletID}
 	return findallparams
 }
 
+// find all multifunction
+func FilterFindAllParam(c *gin.Context, claims jwt.MapClaims) FindAllParams {
+	var findallparams FindAllParams
+	var keywordName string
+	var businessID string
+	var statusID string
+	var outletID string
+	var sort string
+	var QC string
+	var Q string
+	var op string
+
+	findallparams = FindAllParams{"-1", "10", "", "code", "", "", "id desc", "", "", "", "", "", ""}
+	businessID = fmt.Sprintf("%v", claims["BusinessID"])
+	outletID = c.Query("OutletID")
+	keywordName = c.Query("keywordName")
+	sortName := Underscore(c.Query("SortName"))
+	sortBy := strings.ToLower(c.Query("SortBy"))
+
+	if c.Query("Status ID") == "" {
+		statusID = c.Query("StatusID")
+	} else {
+		statusID = c.Query("Status ID")
+	}
+
+	if statusID != "-1" && statusID != "" {
+		statusID = "status_id = " + statusID
+	} else {
+		statusID = ""
+	}
+
+	if businessID != "-1" && businessID != "" {
+		if statusID != "" {
+			op = " AND "
+		}
+		businessID = op + "business_id = " + businessID
+		op = ""
+	} else {
+		businessID = ""
+	}
+
+	if outletID != "-1" && outletID != "" {
+		if businessID != "" {
+			op = " AND "
+		}
+		outletID = op + " outlet_id = " + outletID
+	} else {
+		outletID = ""
+	}
+
+	if c.Query("Query") == "" {
+		Q = c.Query("Q")
+	} else {
+		Q = c.Query("Query")
+	}
+	query := QueryReplaceFindAll(Q)
+
+	if sortName != "" {
+		sort = sortName + " " + sortBy
+	}
+
+	dataFinder := DataFinder(c.Query("KeywordName"), c.Query("Keyword"))
+	page := c.Query("Page")
+	size := c.Query("Size")
+	keyword := c.Query("Keyword")
+	grpupBy := Underscore(c.Query("GroupBy"))
+	QC = query + statusID + businessID + outletID + keywordName
+	findallparams = FindAllParams{Page: page, Size: size, Keyword: keyword, StatusID: statusID, Query: query, DataFinder: dataFinder, QueryCondition: QC, SortName: sortName, SortBy: sort, GroupBy: grpupBy, BusinessID: businessID, OutletID: outletID}
+	return findallparams
+}
+
+// keyword like full text search
 func DataFinder(keywordname string, keyword string) string {
 	str := "1=1"
 	if keywordname != "" && keyword != "" {
@@ -484,61 +650,42 @@ func DataFinder(keywordname string, keyword string) string {
 	return str
 }
 
-func FilterFindAllTimeline(c *gin.Context) (string, string, string, string, string, string, string) {
-	direction := c.Query("Direction")
-	key := c.Query("Key")
-	size := c.Query("Size")
-	keyword := c.Query("Keyword")
-	statusID := c.Query("StatusID")
-	sortBy := c.Query("SortBy")
-	sortType := c.Query("SortType")
-
-	if c.Query("Direction") == "" {
-		direction = "old"
-	}
-	if c.Query("Key") == "" {
-		key = "-1"
-	}
-
-	if c.Query("Size") == "" {
-		size = "10"
-	}
-
-	if c.Query("StatusID") == "" {
-		statusID = "-1"
-	}
-
-	if c.Query("SortBy") == "" {
-		sortBy = "id"
-	}
-
-	if c.Query("SortType") == "" {
-		sortType = "desc"
-	}
-
-	return direction, key, size, keyword, statusID, sortBy, sortType
-}
-
 func GetFileNameDropbox(code string, folder string) string {
 	filename := "/atr/" + folder + "/" + strings.ToUpper(code) + "-" + strconv.Itoa(rand.Intn(10000000)) + ".jpg"
 	return filename
 }
 
-func DBMigrate(db *models.DB) error {
-	var errMigrate error
-
-	errMigrate = db.DB.AutoMigrate(models.Atr{}).Error
-
-	if errMigrate != nil {
-		return errMigrate
+// migrate db
+func AddDbMigrate() []TableMigrate {
+	type TableMigrates []TableMigrate
+	var tableMigrates = TableMigrates{
+		TableMigrate{Table: models.Atr{}},
+		TableMigrate{Table: models.User{}},
 	}
 
-	return nil
+	return tableMigrates
+}
+
+func DBMigrate(db *models.DB) error {
+	var errMigrate error
+	tx := configs.ActiveDB.Begin()
+	tableMigrates := AddDbMigrate()
+	for _, v := range tableMigrates {
+		errMigrate = tx.AutoMigrate(v.Table).Error
+		if errMigrate != nil {
+			tx.Rollback()
+			fmt.Println(errMigrate)
+			return errMigrate
+		}
+	}
+	tx.Commit()
+
+	return errMigrate
 }
 
 func DBSeed(db *models.DB) error {
 	var errSeed error
-	// errSeed = models.PackageSeed(db)
+	errSeed = models.PackageSeed(db)
 
 	if errSeed != nil {
 		return errSeed
@@ -665,4 +812,39 @@ func Underscore(s string) string {
 		}
 	}
 	return strings.Replace(string(strReplace), " ", "", -1)
+}
+
+func SendSlackNotification(Message string) error {
+	envname := "WEBHOOKSLACK"
+	webhookslack := os.Getenv(envname)
+	webhookUrl := webhookslack // webhooks notif bitu-sip
+	slackBody, _ := json.Marshal(SlackRequestBody{Text: Message})
+
+	req, err := http.NewRequest(http.MethodPost, webhookUrl, bytes.NewBuffer(slackBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(resp.Body)
+	if buf.String() != "ok" {
+		return errors.New("Non-ok response returned from Slack")
+	}
+
+	return nil
+}
+
+func ReturnHandler(status int, err error) StatusClient {
+	var StatusClientSave StatusClient
+	// Get Filter & Message Here
+	// SendSlackNotification(Message)
+	return StatusClientSave
 }

@@ -3,10 +3,10 @@ package repository
 import (
 	"net/http"
 	"strconv"
-
+	"github.com/sirupsen/logrus"
 	"github.com/atomic/atr/models"
 	"github.com/atomic/atr/src/helpers"
-	"github.com/sirupsen/logrus"
+
 )
 
 //AtrRepository initialize object from model Atr, to be used in database operation

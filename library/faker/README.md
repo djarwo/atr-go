@@ -263,7 +263,7 @@ Support Only For :
 
 ## Limitation
 Unfortunately this library has some limitation
-* Not support for private field. Just make sure your field's struct is public. If not, it will throw panic error.
+* Not support for private field. Just make sure your field's struct is public. If not, it will throw logrus.Error error.
 * Not support for `interface{}` data type. How we can generate if we don't know what is the data type? 
 * Not support for `map[interface{}]interface{}, map[any_type]interface{}, map[interface{}]any_type`. Still, it's about interface. We can't give you something if we don't know what really you want. 
 

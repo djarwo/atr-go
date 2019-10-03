@@ -2,7 +2,6 @@ package helpers
 
 import (
 	"net/http"
-
 	"github.com/sirupsen/logrus"
 )
 

@@ -11,11 +11,11 @@ This README would normally document whatever steps are necessary to get your app
 ### How do I get set up? ###
 
 CREATE ENVIRONMENT
-  Environment Name: ATR-BPN
+  Environment Name: ATR
   Windows: 
-    ATR-BPN = path\to\your\environment\location
+    ATR = path\to\your\environment\location
   LINUX
-    export ATR-BPN=path\to\your\environment\location
+    export ATR=path\to\your\environment\location
 
 Configuration
 
