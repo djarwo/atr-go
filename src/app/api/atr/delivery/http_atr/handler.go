@@ -3,6 +3,10 @@ package http_atr
 import (
 	"net/http"
 
+	"github.com/atomic/atr/middleware"
+
+	"github.com/atomic/atr/library"
+
 	"github.com/atomic/atr/models"
 
 	"github.com/atomic/atr/src/app/api/atr"
@@ -35,7 +39,7 @@ func (h AtrHandler) RegisterAPI(db *models.DB, router *gin.Engine, v *gin.Router
 
 	rs := v.Group("/atrs")
 	{
-		rs.GET("", base.AtrFindAll)
+		rs.GET("", middleware.Auth, base.AtrFindAll)
 	}
 
 }
@@ -43,7 +47,8 @@ func (h AtrHandler) RegisterAPI(db *models.DB, router *gin.Engine, v *gin.Router
 //AtrFindAll get all data in atr
 func (h *AtrHandler) AtrFindAll(c *gin.Context) {
 	page, size := helpers.FilterFindAll(c)
-	filterFindAllParams := helpers.FilterFindAllParam(c)
+	claims := library.GetJWTClaims("")
+	filterFindAllParams := helpers.FilterFindAllParam(c, claims)
 	datas, length, statusCode, err := h.AtrUsecase.FindAll(filterFindAllParams)
 
 	if length == 0 || err != nil {
@@ -52,6 +57,7 @@ func (h *AtrHandler) AtrFindAll(c *gin.Context) {
 		h.Result = gin.H{
 			"result": response,
 		}
+		helpers.ReturnHandler(h.Status, err)
 	} else {
 		response = helpers.ResultAll{Status: "Sukses", StatusCode: http.StatusOK, Message: "Data Atr Berhasil Di Tampilkan", TotalData: length, Page: page, Size: size, Data: datas}
 		h.Status = http.StatusOK
@@ -60,5 +66,6 @@ func (h *AtrHandler) AtrFindAll(c *gin.Context) {
 		}
 	}
 
+	helpers.ReturnHandler(h.Status, err)
 	c.JSON(h.Status, h.Result)
 }

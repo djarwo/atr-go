@@ -3,44 +3,47 @@ package configs
 import (
 	"database/sql"
 	"fmt"
+	"os"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/atomic/atr/models"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
-	"github.com/spf13/viper"
 
 	sqlmock "gopkg.in/DATA-DOG/go-sqlmock.v1"
 )
 
 var (
-	JwtActiveToken *string
-	ActiveDB       *gorm.DB
+	JwtActiveToken             *string
+	PermissionID               *uint
+	ActiveDB                   *gorm.DB
+	BusinessID                 *string
+	JwtActiveTokenMicroservice *string
 )
+
+type TempToken struct {
+	JwtActiveTokenMicroservice string
+	Data                       interface{}
+}
 
 // DBInit create connection to database
 func DBInit() *models.DB {
-
-	dbHost := viper.GetString(`database.host`)
-	dbPort := viper.GetString(`database.port`)
-	dbUser := viper.GetString(`database.user`)
-	dbPass := viper.GetString(`database.pass`)
-	dbName := viper.GetString(`database.name`)
-
+	envname := "ATOMICGO"
+	connection := os.Getenv(envname)
+	fmt.Println(connection)
+	fmt.Println("connection:" + connection)
 	var connStr string
-	connStr = "" + dbUser + ":" + dbPass + "@(" + dbHost + ":" + dbPort + ")/" + dbName + "?charset=utf8&parseTime=True&loc=Local"
-	// fmt.Println(connStr)
+	connStr = connection + "?charset=utf8&parseTime=True&loc=Local"
 
 	db, err := gorm.Open("mysql", connStr)
-	//gorm.Open("mysql", "dev:seven@(localhost:3306)/sip?charset=utf8&parseTime=True&loc=Local")
-	//gorm.Open("mysql", "dev:@seven(127.0.0.1:3306)/sip?charset=utf8&parseTime=True&loc=Local")
 	if err != nil {
 		fmt.Println(err)
-		panic("failed to connect to database")
+		logrus.Error("failed to connect to database")
 	}
 
-	// fmt.Println("Masuk InitDB")
 	ActiveDB = db
-
+	db.SingularTable(true)
 	return &models.DB{DB: db}
 }
 

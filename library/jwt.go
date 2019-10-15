@@ -1,11 +1,13 @@
 package library
 
 import (
+	"fmt"
 	"log"
+	"strconv"
 	"time"
 
-	"github.com/atomic/sip/configs"
-	"github.com/atomic/sip/src/helpers"
+	"github.com/atomic/atr/configs"
+	"github.com/atomic/atr/src/helpers"
 	"github.com/dgrijalva/jwt-go"
 )
 
@@ -55,15 +57,37 @@ func GetJWTClaims(token string) jwt.MapClaims {
 		claims, _ := extractClaims(*configs.JwtActiveToken)
 		return claims
 	} else {
+		configs.JwtActiveToken = &token
 		claims, _ := extractClaims(token)
 		return claims
 	}
 }
 
-// func GetBusiness() string {
-// 	claims := GetJWTClaims("")
-// 	businessID := fmt.Sprintf("%v", claims["BusinessID"])
-// 	strBusinessID := "business_id = " + businessID
+func GetBusiness() string {
+	claims := GetJWTClaims("")
+	businessID := fmt.Sprintf("%v", claims["BusinessID"])
+	strBusinessID := "business_id = " + businessID
 
-// 	return strBusinessID
-// }
+	return strBusinessID
+}
+
+func GetBusinessExternal() string {
+	businessID := *configs.BusinessID
+	strBusinessID := "business_id = " + businessID
+
+	return strBusinessID
+}
+
+func GetBusinessID() int {
+	claims := GetJWTClaims("")
+	businessID, _ := strconv.Atoi(fmt.Sprintf("%v", claims["BusinessID"]))
+
+	return businessID
+}
+
+func GetUserID() int {
+	claims := GetJWTClaims("")
+	UserID, _ := strconv.Atoi(fmt.Sprintf("%v", claims["ID"]))
+
+	return UserID
+}

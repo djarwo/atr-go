@@ -11,11 +11,11 @@ This README would normally document whatever steps are necessary to get your app
 ### How do I get set up? ###
 
 CREATE ENVIRONMENT
-  Environment Name: ATR-BPN
+  Environment Name: ATR
   Windows: 
-    ATR-BPN = path\to\your\environment\location
+    ATR = path\to\your\environment\location
   LINUX
-    export ATR-BPN=path\to\your\environment\location
+    export ATR=path\to\your\environment\location
 
 Configuration
 
@@ -42,10 +42,18 @@ Configuration
   go get gopkg.in/DATA-DOG/go-sqlmock.v1
 
 Unit Testing
+
   go get -u "github.com/vektra/mockery/.../", then $GOPATH/bin/mockery
 
-// Postman Collection 
-https://www.getpostman.com/collections/b81ec19a76f6f5428a7f
+Set Env (Windows => User Variable)
+
+  Variable => PORTATOMICGO || Value => :8080
+
+  Variable => ATOMICGO || Value => root:@(localhost:3306)/atr 
+
+  Variable => BASICTOKENGO || Value => {"Type":"mobileapp","SecretKey":"Angke Fren","Key":"LKHlhb899Y09olUi"}]
+
+  Variable => WEBHOOKSLACK || Value => https://hooks.slack.com/services/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
 
 
 Install to Bin
